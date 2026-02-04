@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 from langgraph.graph import MessagesState, END
 from langgraph.types import interrupt
 from langchain_core.messages import AIMessage
@@ -52,9 +53,12 @@ def assistant_node(state: ParkingState) -> dict:
     """Handle user queries using the supervisor agent and extract classification."""
     user_message = state["messages"][-1].content
 
+    # Use a unique thread_id per invocation to avoid polluting
+    # the supervisor agent's context across turns
+    supervisor_thread_id = f"supervisor-{uuid.uuid4()}"
     result = supervisor_agent.invoke(
         {"messages": [{"role": "user", "content": user_message}]},
-        config={"configurable": {"thread_id": "supervisor-thread"}},
+        config={"configurable": {"thread_id": supervisor_thread_id}},
     )
 
     raw_response = result["messages"][-1].content
