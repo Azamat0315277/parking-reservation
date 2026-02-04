@@ -1,0 +1,1 @@
+npx -y @modelcontextprotocol/inspector npx -y @modelcontextprotocol/server-filesystem /Users/azamatkuzdibayev/ml_projects/parking-reservation/parking-reservation/customer_data
