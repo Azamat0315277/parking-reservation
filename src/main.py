@@ -114,7 +114,7 @@ async def example_flow():
     # Step 1: Informational query
     print("Step 1: Asking about availability...\n")
     result = await parking_graph.ainvoke(
-        {"messages": [HumanMessage(content="How many Premium spots are available?")]},
+        {"messages": [HumanMessage(content="How many Standard spots are available?")]},
         config=config,
     )
     print(f"Assistant: {result['final_response']}\n")

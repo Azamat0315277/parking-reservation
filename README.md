@@ -129,8 +129,8 @@ cp .env.example .env
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `GOOGLE_API_KEY` | Gemini API key | `AIza...` |
-| `LLM_MODEL` | Gemini model for generation | `gemini-2.0-flash-exp` |
+| `GOOGLE_API_KEY` | Gemini API key | `Your-Gemini-API-Key` |
+| `LLM_MODEL` | Gemini model for generation | `gemini-3-flash-preview` |
 | `EMBEDDING_MODEL` | Gemini model for embeddings | `gemini-embedding-001` |
 | `READER_CONNECTION_STRING` | PostgreSQL URI (read-only user) | `postgresql://reader:pass@localhost:5432/rag_db` |
 | `WRITER_CONNECTION_STRING` | PostgreSQL URI (writer user) | `postgresql://parking_writer:pass@localhost:5432/rag_db` |
@@ -141,7 +141,93 @@ cp .env.example .env
 | `LANGSMITH_TRACING` | Enable LangSmith tracing | `true` |
 | `LANGSMITH_PROJECT` | LangSmith project name | `parking-reservation` |
 
-### 3. Set up PostgreSQL
+### 3. Set up databases with Docker (Recommended)
+
+The easiest way to run PostgreSQL and MongoDB is using Docker Compose. This automatically sets up both databases with the correct schema and seed data.
+
+#### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed and running
+- [Docker Compose](https://docs.docker.com/compose/install/) (included with Docker Desktop)
+
+#### Start the containers
+
+```bash
+# Start both PostgreSQL and MongoDB containers
+docker compose up -d
+
+# Verify containers are running
+docker compose ps
+
+# View logs (optional)
+docker compose logs -f
+```
+
+This will:
+- Start **PostgreSQL 16** on port `5432` with:
+  - Database `rag_db` created automatically
+  - Schema and 100 parking spots seeded from `src/sql/parking_lots.sql`
+  - `reader` and `parking_writer` users created from `src/sql/user_creating.sql`
+- Start **MongoDB Atlas Local** on port `27017` with vector search support
+
+#### Environment variables for Docker
+
+Update your `.env` file with these connection strings:
+
+```bash
+# PostgreSQL (Docker)
+READER_CONNECTION_STRING=postgresql://reader:password@localhost:5432/rag_db
+WRITER_CONNECTION_STRING=postgresql://parking_writer:password@localhost:5432/rag_db
+
+# MongoDB (Docker)
+MONGODB_URI=mongodb://localhost:27017/?directConnection=true
+```
+
+#### Useful Docker commands
+
+```bash
+# Stop containers (preserves data)
+docker compose stop
+
+# Start stopped containers
+docker compose start
+
+# Stop and remove containers (preserves volume data)
+docker compose down
+
+# Stop and remove containers AND delete all data
+docker compose down -v
+
+# Restart with fresh data
+docker compose down -v && docker compose up -d
+
+# Connect to PostgreSQL CLI
+docker exec -it parking-postgres psql -U admin -d rag_db
+
+# Connect to MongoDB shell
+docker exec -it parking-mongodb mongosh
+```
+
+#### Database layout
+
+| Parking Type | Spot IDs | Price/hr | Count |
+|-------------|----------|----------|-------|
+| Premium | 1 - 15 | $6.00 | 15 |
+| Standard | 16 - 65 | $4.00 | 50 |
+| Rooftop | 66 - 85 | $3.00 | 20 |
+| Oversized | 86 - 95 | $7.00 | 10 |
+| Motorcycle | 96 - 100 | $2.00 | 5 |
+
+The `reader` user has SELECT-only access. The `parking_writer` user can SELECT and UPDATE `space_availability`, `reservation_start`, and `reservation_end` columns only.
+
+---
+
+### 4. Alternative: Manual database setup
+
+<details>
+<summary>Click to expand manual setup instructions (without Docker)</summary>
+
+#### Set up PostgreSQL manually
 
 Create the database, schema, seed data, and restricted users:
 
@@ -156,25 +242,6 @@ psql -U admin -d rag_db -f src/sql/parking_lots.sql
 psql -U admin -d rag_db -f src/sql/user_creating.sql
 ```
 
-**Database layout:**
-
-| Parking Type | Spot IDs | Price/hr | Count |
-|-------------|----------|----------|-------|
-| Premium | 1 - 15 | $6.00 | 15 |
-| Standard | 16 - 65 | $4.00 | 50 |
-| Rooftop | 66 - 85 | $3.00 | 20 |
-| Oversized | 86 - 95 | $7.00 | 10 |
-| Motorcycle | 96 - 100 | $2.00 | 5 |
-
-The `reader` user has SELECT-only access. The `parking_writer` user can SELECT and UPDATE `space_availability`, `reservation_start`, and `reservation_end` columns only.
-
-### 4. Set up MongoDB Atlas
-
-The RAG tool uses MongoDB Atlas as a vector store. Start a local Atlas deployment:
-
-```bash
-atlas deployments start
-```
 
 On first run, the system automatically:
 1. Reads `src/data/parking_policy.txt`
@@ -188,7 +255,7 @@ On first run, the system automatically:
 The file recording tool uses the MCP filesystem server via `npx`:
 
 ```bash
-npx -y @modelcontextprotocol/server-filesystem
+npx -y @modelcontextprotocol/server-filesystem `path/to/customer_data`
 ```
 
 No separate installation is needed — `npx` downloads it on first use.

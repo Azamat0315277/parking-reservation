@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: parking-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: rag_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/sql/parking_lots.sql:/docker-entrypoint-initdb.d/01_parking_lots.sql:ro
+      - ./src/sql/user_creating.sql:/docker-entrypoint-initdb.d/02_user_creating.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d rag_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MongoDB with Atlas-like features (vector search support)
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    container_name: parking-mongodb
+    environment:
+      - MONGODB_INITDB_ROOT_USERNAME=admin
+      - MONGODB_INITDB_ROOT_PASSWORD=adminpassword
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongodb_data:
