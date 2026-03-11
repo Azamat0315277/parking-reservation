@@ -148,12 +148,35 @@ async def example_flow():
     print(f"Final Result:\n{result['final_response']}\n")
 
 
+def run_api_server():
+    """Run the FastAPI server for admin approval."""
+    import uvicorn
+    from src.api.main import app
+
+    print("\n" + "=" * 60)
+    print("Starting Admin Approval API Server")
+    print("=" * 60)
+    print("Swagger UI: http://localhost:8000/docs")
+    print("ReDoc: http://localhost:8000/redoc")
+    print("=" * 60 + "\n")
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
 async def main():
-    """Main entry point - choose between interactive chat or example flow."""
+    """Main entry point - choose between interactive chat, example flow, or API server."""
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--example":
-        await example_flow()
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--example":
+            await example_flow()
+        elif sys.argv[1] == "--api":
+            run_api_server()
+        else:
+            print("Usage: python -m src.main [--example | --api]")
+            print("  (no args)  : Interactive chat session")
+            print("  --example  : Run example reservation flow")
+            print("  --api      : Start admin approval API server")
     else:
         await chat_session()
 

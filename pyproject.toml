@@ -9,6 +9,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115.0",
+    "filelock>=3.16.0",
     "gdown>=5.2.1",
     "httpx>=0.28.1",
     "langchain>=1.2.8",
@@ -38,6 +40,7 @@ dependencies = [
     "trulens>=2.5.3",
     "trulens-apps-llamaindex>=2.5.3",
     "trulens-providers-google>=2.5.3",
+    "uvicorn>=0.32.0",
 ]
 
 [tool.hatch.build.targets.wheel]

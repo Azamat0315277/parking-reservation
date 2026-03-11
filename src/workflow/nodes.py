@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from langgraph.graph import MessagesState, END
@@ -10,6 +11,10 @@ from src.agents.supervisor_agent import supervisor_agent
 from src.tools.sql_reader_tool import find_available_spot
 from src.tools.parking_reservation_tool import reserve_parking_space
 from src.tools.file_writer_tools import append_reservation
+from src.api.services.reservation_service import ReservationService
+
+# Configuration for approval mode
+USE_API_APPROVAL = os.getenv("USE_API_APPROVAL", "true").lower() == "true"
 
 
 # =============================================================
@@ -18,11 +23,12 @@ from src.tools.file_writer_tools import append_reservation
 
 class ParkingState(MessagesState):
     reservation_details: str  # JSON string with reservation info, or ""
-    approval: str             # "approved" / "denied" / ""
+    approval: str             # "approved" / "denied" / "pending_api" / ""
     customer_name: str        # Customer's full name
     car_number: str           # Customer's car/license plate number
     reservation_success: bool # True if reservation UPDATE succeeded
     final_response: str
+    pending_reservation_id: str  # UUID of pending reservation (API mode)
 
 
 # =============================================================
@@ -107,18 +113,83 @@ def route_after_classification(state: ParkingState) -> Literal["human_approval",
 def human_approval_node(state: ParkingState) -> dict:
     """Pause the graph and collect customer info + approval decision.
 
-    Expects resume value as a dict:
-        {
-            "decision": "approve" or "deny",
-            "customer_name": "John Doe",
-            "car_number": "ABC-1234"
-        }
-    """
-    details = state["reservation_details"]
+    In CLI mode (USE_API_APPROVAL=false):
+        Uses interrupt() for console input.
+        Expects resume value as a dict:
+            {
+                "decision": "approve" or "deny",
+                "customer_name": "John Doe",
+                "car_number": "ABC-1234"
+            }
 
+    In API mode (USE_API_APPROVAL=true):
+        Prompts for customer info, creates pending reservation via API,
+        and returns immediately. Admin approves/rejects via REST API.
+    """
+    details_json = state["reservation_details"]
+    details = json.loads(details_json)
+
+    if USE_API_APPROVAL:
+        # API mode: Prompt for customer info, then submit to API
+        response = interrupt(
+            f"Reservation request — please provide your name and car number:\n{details_json}"
+        )
+
+        if isinstance(response, dict):
+            customer_name = response.get("customer_name", "")
+            car_number = response.get("car_number", "")
+        else:
+            customer_name = ""
+            car_number = ""
+
+        if not customer_name or not car_number:
+            return {
+                "approval": "denied",
+                "final_response": "Reservation cancelled: customer name and car number are required.",
+            }
+
+        # Submit to pending reservations via service
+        service = ReservationService()
+        try:
+            pending = service.create_pending_reservation(
+                parking_id=details.get("parking_id"),
+                parking_type=details.get("parking_type"),
+                start_time=details.get("start_time"),
+                end_time=details.get("end_time"),
+                customer_name=customer_name,
+                car_number=car_number,
+                total_price=details.get("total_price"),
+            )
+
+            msg = (
+                f"Your reservation request has been submitted for admin approval.\n"
+                f"  Request ID: {pending['id']}\n"
+                f"  Customer: {customer_name}\n"
+                f"  Car Number: {car_number}\n"
+                f"  Parking: #{details.get('parking_id')} ({details.get('parking_type')})\n"
+                f"  From: {details.get('start_time')}\n"
+                f"  To: {details.get('end_time')}\n\n"
+                f"You will be notified once the admin processes your request.\n"
+                f"Check status at: GET /reservations/{pending['id']}/status"
+            )
+
+            return {
+                "approval": "pending_api",
+                "customer_name": customer_name,
+                "car_number": car_number,
+                "pending_reservation_id": pending["id"],
+                "final_response": msg,
+            }
+        except Exception as e:
+            return {
+                "approval": "denied",
+                "final_response": f"Failed to submit reservation request: {e}",
+            }
+
+    # CLI mode: Original interrupt-based logic
     response = interrupt(
         f"Reservation request — please provide your name, car number, "
-        f"and approve or deny:\n{details}"
+        f"and approve or deny:\n{details_json}"
     )
 
     # Support both dict (with customer info) and plain string (legacy)
@@ -146,8 +217,15 @@ def human_approval_node(state: ParkingState) -> dict:
     }
 
 
-def route_after_approval(state: ParkingState) -> Literal["reservation", "denial"]:
-    return "reservation" if state.get("approval") == "approved" else "denial"
+def route_after_approval(state: ParkingState) -> Literal["reservation", "denial", "__end__"]:
+    approval = state.get("approval", "")
+    if approval == "approved":
+        return "reservation"
+    elif approval == "pending_api":
+        # API mode: workflow ends here, admin will approve/reject via API
+        return END
+    else:
+        return "denial"
 
 
 def route_after_reservation(state: ParkingState) -> Literal["file_recording", "denial"]:
