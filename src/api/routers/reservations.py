@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+import logging
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 
 from src.api.models.schemas import (
@@ -8,6 +9,10 @@ from src.api.models.schemas import (
     StatusCheckResponse,
 )
 from src.api.services.reservation_service import ReservationService
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reservations", tags=["reservations"])
 
@@ -25,6 +30,7 @@ async def create_reservation_request(
     Create a new pending reservation request.
     The agent calls this endpoint when a user wants to reserve a spot.
     """
+    logger.info(f"Received reservation request: {request.model_dump()}")
     try:
         reservation = service.create_pending_reservation(
             parking_id=request.parking_id,
@@ -35,8 +41,10 @@ async def create_reservation_request(
             car_number=request.car_number,
             total_price=request.total_price,
         )
+        logger.info(f"Reservation created successfully: {reservation['id']}")
         return reservation
     except Exception as e:
+        logger.error(f"Failed to create reservation: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 

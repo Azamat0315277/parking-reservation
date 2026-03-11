@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "9b5ff9ba-a312-4d2d-898e-afe45debecbd",
+    "parking_id": 17,
+    "parking_type": "Standard",
+    "start_time": "2026-03-12T09:00:00",
+    "end_time": "2026-03-12T18:00:00",
+    "total_price": null,
+    "customer_name": "Azamat Kuzdibayev",
+    "car_number": "QWE-1234",
+    "status": "approved",
+    "created_at": "2026-03-11T14:21:02",
+    "updated_at": "2026-03-11T14:21:38",
+    "admin_notes": null
+  }
+]

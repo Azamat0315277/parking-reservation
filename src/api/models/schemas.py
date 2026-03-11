@@ -12,7 +12,7 @@ class ReservationStatus(str, Enum):
 
 class ReservationRequest(BaseModel):
     """Request body for creating a new pending reservation."""
-    parking_id: int = Field(..., gt=0)
+    parking_id: Optional[int] = Field(None, gt=0)  # Optional - will auto-assign if not provided
     parking_type: str = Field(..., pattern="^(Standard|Premium|Rooftop|Oversized|Motorcycle)$")
     start_time: str
     end_time: str

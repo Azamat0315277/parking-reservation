@@ -1,0 +1,2 @@
+John Doe | ABC-1234 | Parking #8 (Premium) | 2025-06-01T00:00:00Z - 2025-06-02T00:00:00Z | Approved: 2026-03-11T12:04:52
+Azamat Kuzdibayev | QWE-1234 | Parking #17 (Standard) | 2026-03-12T09:00:00 - 2026-03-12T18:00:00 | Approved: 2026-03-11T14:21:38

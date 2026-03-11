@@ -2,13 +2,43 @@
 
 A multi-agent RAG (Retrieval-Augmented Generation) system that combines LangGraph orchestration, LlamaIndex vector search, and PostgreSQL to handle parking information queries and spot reservations through natural language. The system classifies user intent and routes queries to specialized tools — SQL database lookups, policy document search, or a reservation workflow with human-in-the-loop approval.
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your GOOGLE_API_KEY and other settings
+
+# 3. Start databases
+docker compose up -d
+
+# 4. Run all services (in separate terminals)
+npx -y @modelcontextprotocol/server-filesystem    your/path/to/customer_data  # MCP file server
+uvicorn src.api.main:app --reload --port 8000                  # Admin API
+streamlit run src/ui/streamlit_app.py                          # User UI (localhost:8501)
+streamlit run src/ui/admin_app.py --server.port 8502           # Admin UI (localhost:8502)
+```
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| User UI | http://localhost:8501 | Chat interface for parking queries & reservations |
+| Admin UI | http://localhost:8502 | Approve/reject pending reservations |
+| Admin API | http://localhost:8000/docs | REST API with Swagger documentation |
+| MCP Server | — | File operations for reservation logging |
+
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Setup](#setup)
 - [Usage](#usage)
+- [REST API](#rest-api)
+- [Streamlit UI](#streamlit-ui)
 - [Workflow Details](#workflow-details)
 - [Tools](#tools)
 - [Agents](#agents)
@@ -68,6 +98,8 @@ User Query
 | Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) — stateful graph with checkpointing and interrupts |
 | LLM | [Google Gemini](https://ai.google.dev/) (via `langchain-google-genai`) |
 | Agent framework | [LangChain](https://github.com/langchain-ai/langchain) `create_agent` |
+| Admin API | [FastAPI](https://fastapi.tiangolo.com/) with Pydantic validation |
+| User UI | [Streamlit](https://streamlit.io/) chat interface |
 | Vector search (RAG) | [LlamaIndex](https://github.com/run-llama/llama_index) with sentence window parsing |
 | Vector store | [MongoDB Atlas](https://www.mongodb.com/atlas) (cosine similarity index) |
 | Relational DB | PostgreSQL with parameterized SQL via SQLAlchemy |
@@ -88,6 +120,17 @@ parking-reservation/
     ├── main.py                             # Entry point — interactive chat + example flow
     ├── agents/
     │   └── supervisor_agent.py             # Supervisor agent (Gemini + 5 tools)
+    ├── api/
+    │   ├── main.py                         # FastAPI app — Admin approval API
+    │   ├── models/
+    │   │   └── schemas.py                  # Pydantic models (ReservationRequest, etc.)
+    │   ├── routers/
+    │   │   └── reservations.py             # REST endpoints for reservation management
+    │   └── services/
+    │       └── reservation_service.py      # Business logic + file-based storage
+    ├── ui/
+    │   ├── streamlit_app.py                # Streamlit chat UI for users
+    │   └── admin_app.py                    # Streamlit admin panel for approvals
     ├── prompts/
     │   ├── supervisor_prompt.py            # Supervisor system prompt with classification rules
     │   └── file_writer_prompt.py           # File agent system prompt
@@ -105,7 +148,8 @@ parking-reservation/
     ├── data/
     │   └── parking_policy.txt              # Policy document (598 lines, RAG source)
     └── customer_data/
-        └── approved_reservations.txt       # Reservation log (written by MCP file agent)
+        ├── approved_reservations.txt       # Reservation log (written by MCP file agent)
+        └── pending_reservations.json       # Pending reservations queue (API storage)
 ```
 
 ## Setup
@@ -329,6 +373,142 @@ print(result["final_response"])
 | Policy | "What are the operating hours?" |
 | Policy | "What's the refund policy?" |
 | Reservation | "Reserve a Premium spot from 2025-06-01 to 2025-06-02" |
+
+## REST API
+
+The system includes a FastAPI-based Admin API for managing parking reservations. This provides a web interface for administrators to review and approve/reject reservation requests.
+
+### Start the API server
+
+```bash
+uvicorn src.api.main:app --reload --port 8000
+```
+
+The API will be available at `http://localhost:8000`. Interactive documentation is at `/docs` (Swagger UI) or `/redoc`.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/reservations/request` | Create a new pending reservation |
+| `GET` | `/reservations/pending` | List all pending reservations |
+| `GET` | `/reservations/all` | List all reservations (any status) |
+| `POST` | `/reservations/{id}/approve` | Approve a pending reservation |
+| `POST` | `/reservations/{id}/reject` | Reject a pending reservation |
+| `GET` | `/reservations/{id}/status` | Check reservation status |
+
+### Request/Response models
+
+**ReservationRequest** (POST `/reservations/request`):
+```json
+{
+  "parking_id": 1,
+  "parking_type": "Premium",
+  "start_time": "2025-06-01T09:00:00",
+  "end_time": "2025-06-02T09:00:00",
+  "customer_name": "John Doe",
+  "car_number": "ABC-1234",
+  "total_price": 144.00
+}
+```
+
+**ReservationResponse**:
+```json
+{
+  "id": "uuid",
+  "parking_id": 1,
+  "parking_type": "Premium",
+  "start_time": "2025-06-01T09:00:00",
+  "end_time": "2025-06-02T09:00:00",
+  "total_price": 144.00,
+  "customer_name": "John Doe",
+  "car_number": "ABC-1234",
+  "status": "pending",
+  "created_at": "2025-05-15T10:30:00",
+  "updated_at": "2025-05-15T10:30:00",
+  "admin_notes": null
+}
+```
+
+**ApprovalRequest** (optional body for approve/reject):
+```json
+{
+  "admin_notes": "Approved by admin"
+}
+```
+
+### Workflow integration
+
+When a reservation is approved via the API:
+1. The `reserve_parking_space` tool is called to update the PostgreSQL database
+2. The reservation is appended to `approved_reservations.txt`
+3. The status changes from `pending` to `approved`
+
+Pending reservations are stored in `customer_data/pending_reservations.json` with file locking for concurrent access safety.
+
+## Streamlit UI
+
+Two web interfaces for users and administrators to interact with the parking reservation system.
+
+### Start the applications
+
+```bash
+# User interface (port 8501)
+streamlit run src/ui/streamlit_app.py
+
+# Admin interface (port 8502)
+streamlit run src/ui/admin_app.py --server.port 8502
+```
+
+| Interface | URL | Purpose |
+|-----------|-----|---------|
+| User UI | `http://localhost:8501` | Chat, queries, reservation requests |
+| Admin UI | `http://localhost:8502` | Review, approve/reject reservations |
+
+### User UI Features
+
+- **Chat interface**: Natural language queries about parking availability, pricing, and policies
+- **Reservation flow**: When a reservation is detected, a form collects customer information
+- **API integration**: Reservations are submitted to the Admin API for approval
+- **Status checker**: Sidebar widget to check reservation status by ID
+
+### Admin UI Features
+
+- **Pending approvals tab**: View all pending reservations with approve/reject buttons
+- **History tab**: View all reservations with filtering (by status) and sorting
+- **Statistics sidebar**: Real-time counts of pending, approved, and rejected reservations
+- **Admin notes**: Add optional notes when approving or rejecting
+
+### Complete workflow
+
+1. **User** opens User UI → asks "Reserve a Premium spot from 2025-06-01 to 2025-06-02"
+2. **User** fills customer info form → submits → receives pending reservation ID
+3. **Admin** opens Admin UI → sees pending reservation in "Pending Approvals" tab
+4. **Admin** reviews details → clicks "Approve" (or "Reject" with notes)
+5. **User** checks status in sidebar → sees "APPROVED" status
+
+### Running all components
+
+```bash
+# Terminal 1: Databases
+docker compose up -d
+
+# Terminal 2: Admin API
+uvicorn src.api.main:app --reload --port 8000
+
+# Terminal 3: User UI
+streamlit run src/ui/streamlit_app.py
+
+# Terminal 4: Admin UI
+streamlit run src/ui/admin_app.py --server.port 8502
+```
+
+### Environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `API_BASE_URL` | Admin API URL for reservation submissions | `http://localhost:8000` |
 
 ## Workflow Details
 

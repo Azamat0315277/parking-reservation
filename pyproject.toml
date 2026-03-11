@@ -36,6 +36,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "seaborn>=0.13.2",
     "sqlalchemy>=2.0.45",
+    "streamlit>=1.28.0",
     "tiktoken>=0.12.0",
     "trulens>=2.5.3",
     "trulens-apps-llamaindex>=2.5.3",

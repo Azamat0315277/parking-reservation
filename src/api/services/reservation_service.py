@@ -1,13 +1,17 @@
 import os
 import json
 import uuid
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from filelock import FileLock
 
 from src.tools.parking_reservation_tool import reserve_parking_space
+from src.tools.sql_reader_tool import find_available_spot
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Path to pending reservations JSON file
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -39,7 +43,7 @@ class ReservationService:
 
     def create_pending_reservation(
         self,
-        parking_id: int,
+        parking_id: Optional[int],
         parking_type: str,
         start_time: str,
         end_time: str,
@@ -47,7 +51,32 @@ class ReservationService:
         car_number: str,
         total_price: Optional[float] = None,
     ) -> dict:
-        """Create a new pending reservation."""
+        """Create a new pending reservation.
+
+        If parking_id is not provided, automatically finds an available spot.
+        """
+        logger.info(f"Creating reservation: parking_id={parking_id}, type={parking_type}, "
+                    f"start={start_time}, end={end_time}, customer={customer_name}")
+
+        # If no parking_id provided, find an available spot
+        if parking_id is None:
+            logger.info(f"No parking_id provided, finding available {parking_type} spot...")
+            result = find_available_spot.invoke(parking_type)
+            logger.info(f"find_available_spot result: {result}")
+            if "available" in result.lower() and "spot" in result.lower():
+                # Extract parking_id from result like "Spot 5 (Premium) is available"
+                import re
+                match = re.search(r"Spot\s+(\d+)", result)
+                if match:
+                    parking_id = int(match.group(1))
+                    logger.info(f"Found available spot: {parking_id}")
+                else:
+                    logger.error(f"Could not parse spot ID from: {result}")
+                    raise ValueError(f"Could not find available {parking_type} spot")
+            else:
+                logger.error(f"No available spots: {result}")
+                raise ValueError(f"No available {parking_type} spots: {result}")
+
         with FileLock(LOCK_FILE):
             reservations = _load_pending()
 
