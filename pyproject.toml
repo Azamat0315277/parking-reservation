@@ -38,10 +38,26 @@ dependencies = [
     "sqlalchemy>=2.0.45",
     "streamlit>=1.28.0",
     "tiktoken>=0.12.0",
-    "trulens>=2.5.3",
-    "trulens-apps-llamaindex>=2.5.3",
-    "trulens-providers-google>=2.5.3",
+    "ragas>=0.2.0",
+    "datasets>=2.14.0",
     "uvicorn>=0.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -42,6 +42,8 @@ streamlit run src/ui/admin_app.py --server.port 8502           # Admin UI (local
 - [Workflow Details](#workflow-details)
 - [Tools](#tools)
 - [Agents](#agents)
+- [RAG Evaluation](#rag-evaluation)
+- [Testing](#testing)
 - [Security](#security)
 
 ## Architecture
@@ -115,7 +117,7 @@ parking-reservation/
 ├── pyproject.toml                          # Dependencies (uv/hatchling)
 ├── .env.example                            # Environment variable template
 ├── notebooks/
-│   └── research.ipynb                      # Original prototype notebook
+│   └── research.ipynb                      # Prototype + RAG evaluation notebook
 └── src/
     ├── main.py                             # Entry point — interactive chat + example flow
     ├── agents/
@@ -131,9 +133,18 @@ parking-reservation/
     ├── ui/
     │   ├── streamlit_app.py                # Streamlit chat UI for users
     │   └── admin_app.py                    # Streamlit admin panel for approvals
+    ├── evaluation/                         # RAG evaluation module (RAGAS)
+    │   ├── cli.py                          # CLI entry point for running evaluations
+    │   ├── capture/
+    │   │   └── rag_capture.py              # RAG output capture engine
+    │   ├── datasets/
+    │   │   └── ground_truth.json           # 15 Q&A test cases
+    │   └── metrics/
+    │       └── ragas_evaluator.py          # RAGAS evaluation pipeline
+    ├── guardrails/                         # Security guardrails
+    │   └── pii_filter.py                   # PII detection and masking
     ├── prompts/
-    │   ├── supervisor_prompt.py            # Supervisor system prompt with classification rules
-    │   └── file_writer_prompt.py           # File agent system prompt
+    │   └── supervisor_prompt.py            # Supervisor system prompt with classification rules
     ├── tools/
     │   ├── sql_reader_tool.py              # 4 read-only SQL tools (availability, pricing, details, find)
     │   ├── parking_reservation_tool.py     # reserve_parking_space — validated SQL UPDATE
@@ -224,7 +235,7 @@ READER_CONNECTION_STRING=postgresql://reader:password@localhost:5432/rag_db
 WRITER_CONNECTION_STRING=postgresql://parking_writer:password@localhost:5432/rag_db
 
 # MongoDB (Docker)
-MONGODB_URI=mongodb://localhost:27017/?directConnection=true
+MONGODB_URI=mongodb://admin:adminpassword@localhost:27017/?directConnection=true
 ```
 
 #### Useful Docker commands
@@ -609,7 +620,148 @@ The supervisor prompt ([supervisor_prompt.py](src/prompts/supervisor_prompt.py))
 
 Each invocation of the supervisor uses a unique `thread_id` (`f"supervisor-{uuid4()}"`) to prevent context leakage between turns.
 
+## RAG Evaluation
+
+The system includes comprehensive RAG evaluation using the RAGAS library with Context Precision and Context Recall metrics.
+
+### Run evaluation
+
+```bash
+# Run full evaluation (all 15 test cases)
+python -m src.evaluation.cli
+
+# Evaluate specific number of questions
+python -m src.evaluation.cli --questions 5
+
+# Evaluate by category
+python -m src.evaluation.cli --category pricing
+
+# Save report to file
+python -m src.evaluation.cli --output reports/eval_report.json
+
+# Verbose mode with detailed output
+python -m src.evaluation.cli --verbose
+```
+
+### Evaluation metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Context Precision** | Measures how much of the retrieved context is relevant to the question |
+| **Context Recall** | Measures how much of the required information was retrieved |
+| **Recall@K** | Retrieval recall at different K values (1, 3, 5, 6) |
+| **Latency** | Query response time (mean, median, P95, P99) |
+
+### Ground truth dataset
+
+Located at `src/evaluation/datasets/ground_truth.json` with 15 test cases covering:
+- Operating hours, pricing, EV charging, refund policies
+- Accessibility, monthly permits, lost tickets, towing rules
+- Grace periods, overnight parking, validation, payment methods
+
+### Evaluation in Jupyter notebook
+
+The `notebooks/research.ipynb` contains a complete evaluation section with:
+- RAG output capture (contexts + answers)
+- RAGAS metric computation
+- Per-sample and category-level analysis
+- Visualization (bar charts, latency histograms, Recall@K curves)
+- Comprehensive evaluation report generation
+
+## Testing
+
+The project includes comprehensive unit tests using pytest with **264 tests** covering API models, business logic, PII filtering, workflow nodes, and evaluation pipelines.
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+uv sync --extra dev
+
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test modules
+uv run pytest tests/test_pii_filter.py -v
+uv run pytest tests/test_api_models.py -v
+
+# Run with coverage
+uv run pytest tests/ --cov=src --cov-report=html
+
+# Run tests in parallel (faster)
+uv run pytest tests/ -n auto
+```
+
+### Test Structure
+
+```
+tests/
+├── conftest.py                  # Shared fixtures and configuration
+├── test_pii_filter.py           # PII detection tests (51 tests)
+├── test_api_models.py           # Pydantic model validation (23 tests)
+├── test_api_routes.py           # REST endpoint tests (17 tests)
+├── test_reservation_service.py  # Business logic tests (17 tests)
+├── test_evaluation_cli.py       # Evaluation CLI tests (17 tests)
+├── test_ragas_evaluator.py      # RAGAS evaluation tests (22 tests)
+├── test_rag_capture.py          # RAG capture engine tests (18 tests)
+├── test_file_writer_tools.py    # MCP file operations tests (18 tests)
+├── test_sql_tools.py            # SQL query tool tests (19 tests)
+├── test_reservation_tool.py     # Reservation validation tests (18 tests)
+├── test_workflow_nodes.py       # Workflow node tests (14 tests)
+├── test_supervisor_agent.py     # Agent tests (14 tests)
+└── test_main_entry.py           # CLI entry point tests (16 tests)
+```
+
+### Test Coverage Summary
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| PII Filter | 51 | High - all patterns, masking, edge cases |
+| API Models | 23 | High - validation, serialization |
+| API Routes | 17 | High - all endpoints, error handling |
+| Reservation Service | 17 | High - CRUD, approval flow |
+| SQL Tools | 19 | High - all 4 tools with mocked DB |
+| Reservation Tool | 18 | High - validation, SQL injection prevention |
+| Evaluation CLI | 17 | Medium - filtering, formatting |
+| RAGAS Evaluator | 22 | Medium - dataset prep, metrics |
+| RAG Capture | 18 | Medium - context extraction |
+| File Writer | 18 | Medium - singleton, MCP patterns |
+| Workflow Nodes | 14 | Medium - classification, routing |
+| Supervisor Agent | 14 | Medium - tool bindings, prompts |
+| Main Entry | 16 | Medium - CLI args, session behavior |
+
+Note: Tests are designed to run without external services using mocks. No API keys are required to run the test suite.
+
 ## Security
+
+### PII Guardrails
+
+Programmatic filtering to prevent exposure of sensitive data using regex-based PII detection:
+
+```python
+from src.guardrails.pii_filter import detect_pii, mask_pii, contains_pii
+
+# Detect PII in text
+result = detect_pii("My SSN is 123-45-6789")
+print(result.contains_pii)  # True
+print(result.pii_types_found)  # [PIIType.SSN]
+print(result.masked_text)  # "My SSN is ***********"
+
+# Quick check
+if contains_pii(user_input):
+    user_input = mask_pii(user_input)
+```
+
+Supported PII types:
+- Social Security Numbers (SSN)
+- Credit/Debit Card Numbers
+- Phone Numbers (US formats)
+- Email Addresses
+- IP Addresses
+- Driver's License Numbers
+- Passport Numbers
+- Bank Account Numbers
+- Date of Birth patterns
 
 ### Database access control
 
@@ -643,4 +795,4 @@ The MCP filesystem server is restricted to the `ALLOWED_DIR` directory, preventi
 
 ### Separation of concerns
 
-The file agent prompt ([file_writer_prompt.py](src/prompts/file_writer_prompt.py)) explicitly defines boundaries — the file agent cannot approve reservations, query the database, or search policies.
+The MCP file tools ([file_writer_tools.py](src/tools/file_writer_tools.py)) are called directly from the workflow with a singleton client pattern to prevent resource leaks. File operations are restricted to only `approved_reservations.txt` within the `ALLOWED_DIR`.
