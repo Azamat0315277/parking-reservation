@@ -141,7 +141,7 @@ class TestFormatConsoleReport:
             ],
             metadata={
                 'num_samples': 1,
-                'llm_model': 'gemini-2.0-flash',
+                'llm_model': 'gemma4:31b-cloud',
             },
         )
 

@@ -19,9 +19,11 @@ from llama_index.core import (
 from llama_index.core.node_parser import SentenceWindowNodeParser
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.vector_stores.mongodb import MongoDBAtlasVectorSearch
-from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from dotenv import load_dotenv
+
+from src.llm_config import OLLAMA_BASE_URL, ollama_headers
 
 load_dotenv()
 
@@ -65,10 +67,17 @@ class RAGCaptureEngine:
 
     def _setup_settings(self):
         """Configure LlamaIndex settings (mirrors rag_tool.py)."""
-        model_name = os.getenv("LLM_MODEL", "gemini-2.0-flash")
+        model_name = os.getenv("LLM_MODEL", "gemma4:31b-cloud")
         embedding_model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
-        Settings.llm = GoogleGenAI(model=model_name, temperature=0)
+        Settings.llm = Ollama(
+            model=model_name,
+            base_url=OLLAMA_BASE_URL,
+            temperature=0,
+            request_timeout=120.0,
+            thinking=False,
+            headers=ollama_headers(),
+        )
         Settings.embed_model = GoogleGenAIEmbedding(
             model_name=embedding_model_name,
             embed_batch_size=500,

@@ -6,16 +6,20 @@ from src.tools.sql_reader_tool import (
     get_spot_details,
     find_available_spot,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from langchain.agents import create_agent
 from dotenv import load_dotenv
 from langgraph.checkpoint.memory import InMemorySaver
 from src.prompts.supervisor_prompt import SUPERVISOR_PROMPT
+from src.llm_config import OLLAMA_BASE_URL, ollama_headers
 load_dotenv()
 
-model = ChatGoogleGenerativeAI(
-    model=os.getenv("LLM_MODEL"),
+model = ChatOllama(
+    model=os.getenv("LLM_MODEL", "gemma4:31b-cloud"),
+    base_url=OLLAMA_BASE_URL,
     temperature=0,
+    reasoning=False,
+    client_kwargs={"headers": ollama_headers()},
 )
 
 supervisor_agent = create_agent(

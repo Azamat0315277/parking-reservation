@@ -68,7 +68,7 @@ def assistant_node(state: ParkingState) -> dict:
     )
 
     raw_response = result["messages"][-1].content
-    # Gemini may return content as a list of blocks or a plain string
+    # Some providers return content as a list of blocks; Ollama returns a plain string
     if isinstance(raw_response, list):
         response_text = raw_response[0]["text"] if raw_response else ""
     else:
