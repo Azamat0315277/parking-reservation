@@ -70,12 +70,12 @@ class TestRAGASEvaluatorInit:
         from src.evaluation.metrics.ragas_evaluator import RAGASEvaluator
 
         with patch.dict('os.environ', {
-            'LLM_MODEL': 'gemini-2.0-flash',
+            'LLM_MODEL': 'gemma4:31b-cloud',
             'EMBEDDING_MODEL': 'gemini-embedding-001',
         }):
             evaluator = RAGASEvaluator()
 
-        assert evaluator.llm_model == 'gemini-2.0-flash'
+        assert evaluator.llm_model == 'gemma4:31b-cloud'
         assert evaluator.embedding_model == 'gemini-embedding-001'
 
     def test_custom_models(self):

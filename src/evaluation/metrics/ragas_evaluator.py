@@ -16,10 +16,12 @@ from ragas import evaluate, EvaluationDataset, SingleTurnSample
 from ragas.metrics import LLMContextPrecisionWithoutReference, LLMContextRecall
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_ollama import ChatOllama
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 
 from src.evaluation.capture.rag_capture import RAGOutput
+from src.llm_config import OLLAMA_BASE_URL, ollama_headers
 
 load_dotenv()
 
@@ -60,7 +62,7 @@ class RAGASEvaluator:
             llm_model: LLM model name for evaluation (default from env)
             embedding_model: Embedding model name (default from env)
         """
-        self.llm_model = llm_model or os.getenv("LLM_MODEL", "gemini-2.0-flash")
+        self.llm_model = llm_model or os.getenv("LLM_MODEL", "gemma4:31b-cloud")
         self.embedding_model = embedding_model or os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
         self._llm = None
@@ -69,9 +71,12 @@ class RAGASEvaluator:
     def _get_llm(self):
         """Get configured LLM for RAGAS evaluation."""
         if self._llm is None:
-            langchain_llm = ChatGoogleGenerativeAI(
+            langchain_llm = ChatOllama(
                 model=self.llm_model,
+                base_url=OLLAMA_BASE_URL,
                 temperature=0,
+                reasoning=False,
+                client_kwargs={"headers": ollama_headers()},
             )
             self._llm = LangchainLLMWrapper(langchain_llm)
         return self._llm
